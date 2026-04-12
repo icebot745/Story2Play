@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useGame } from '../context/GameContext'
 import ImageUpload from './steps/ImageUpload'
 import AnnotationCanvas from './steps/AnnotationCanvas'
 import MovementForm from './steps/MovementForm'
@@ -17,11 +18,15 @@ const STEPS = [
 
 export default function Wizard() {
   const [currentStep, setCurrentStep] = useState(0)
+  const { gameSpec } = useGame()
 
   const step = STEPS[currentStep]
   const StepComponent = step.component
   const isFirst = currentStep === 0
   const isLast = currentStep === STEPS.length - 1
+
+  // Step 1 requires an image before proceeding
+  const canProceed = currentStep === 0 ? !!gameSpec.background : true
 
   return (
     <div className="wizard">
@@ -55,7 +60,11 @@ export default function Wizard() {
           </button>
         )}
         {!isLast && (
-          <button className="btn btn-primary" onClick={() => setCurrentStep(prev => prev + 1)}>
+          <button
+            className="btn btn-primary"
+            onClick={() => setCurrentStep(prev => prev + 1)}
+            disabled={!canProceed}
+          >
             Next →
           </button>
         )}
