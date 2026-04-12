@@ -365,10 +365,14 @@ function buildGameScript(specJson) {
         entities.forEach(function (obs) {
           if (!obs.alive || obs.role !== 'obstacle') return;
           if (!overlaps(player, obs)) return;
-          var pcx = player.x + player.w / 2;
-          var ocx = obs.x   + obs.w   / 2;
-          player.x = pcx < ocx ? obs.x - player.w : obs.x + obs.w;
-          player.vx = 0;
+          if (obs.subtype === 'spikes') {
+            if (invincibleMs <= 0) { lives--; invincibleMs = 2000; respawnPlayer(); }
+          } else {
+            var pcx = player.x + player.w / 2;
+            var ocx = obs.x   + obs.w   / 2;
+            player.x = pcx < ocx ? obs.x - player.w : obs.x + obs.w;
+            player.vx = 0;
+          }
         });
 
         // --- Move Y → resolve Y obstacle collisions + ground ---
@@ -387,12 +391,15 @@ function buildGameScript(specJson) {
         entities.forEach(function (obs) {
           if (!obs.alive || obs.role !== 'obstacle') return;
           if (!overlaps(player, obs)) return;
-          if (player.vy >= 0) {
+          if (obs.subtype === 'spikes') {
+            // Touched spikes from above or below — always hurts
+            if (invincibleMs <= 0) { lives--; invincibleMs = 2000; respawnPlayer(); }
+          } else if (player.vy >= 0) {
             // Falling — land on top
             player.y   = obs.y - player.h;
             player.vy  = 0;
             onGround   = true;
-            standingOn = obs;    // remember so we ride it next frame
+            standingOn = obs;
           } else {
             // Rising — hit underside
             player.y  = obs.y + obs.h;
@@ -428,12 +435,6 @@ function buildGameScript(specJson) {
               respawnPlayer();
             }
 
-          } else if (e.role === 'obstacle' && e.subtype === 'spikes') {
-            if (invincibleMs <= 0) {
-              lives--;
-              invincibleMs = 2000;
-              respawnPlayer();
-            }
           }
         });
       }
