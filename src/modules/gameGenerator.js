@@ -110,13 +110,6 @@ function buildGameScript(specJson) {
   return `(function () {
   var SPEC = ${specJson};
 
-  var ROLE_COLORS = {
-    player:      '#4caf50',
-    enemy:       '#f44336',
-    collectible: '#ffc107',
-    obstacle:    '#795548',
-  };
-
   // Canvas + sizing
   var canvas = document.getElementById('game');
   var ctx    = canvas.getContext('2d');
@@ -154,11 +147,11 @@ function buildGameScript(specJson) {
         id:         el.id,
         name:       el.name,
         role:       el.role,
+        subtype:    el.subtype || null,
         x:          el.x * W,
         y:          el.y * H,
         w:          Math.max(el.w * W, 18),
         h:          Math.max(el.h * H, 18),
-        // save start pos for reset
         startX:     el.x * W,
         startY:     el.y * H,
         vx: 0, vy: 0,
@@ -166,7 +159,6 @@ function buildGameScript(specJson) {
         patrolDir:  1,
         mvType:     mv.type,
         speed:      mv.speed || 3,
-        color:      ROLE_COLORS[el.role] || '#9e9e9e',
       };
     });
 
@@ -373,21 +365,183 @@ function buildGameScript(specJson) {
       }
     }
 
-    // Render
-    function drawRoundedRect(x, y, w, h, r) {
+    // ── Drawing functions ──────────────────────────────
+
+    function drawStickman(x, y, w, h, color) {
+      ctx.save();
+      var lw = Math.max(2, Math.min(4, w * 0.09));
+      ctx.strokeStyle = color;
+      ctx.fillStyle   = color;
+      ctx.lineWidth   = lw;
+      ctx.lineCap     = 'round';
+      ctx.lineJoin    = 'round';
+
+      var cx     = x + w / 2;
+      var headR  = Math.max(4, Math.min(w * 0.22, h * 0.2));
+      var headCy = y + headR + lw;
+
+      // Head
       ctx.beginPath();
-      ctx.moveTo(x + r, y);
-      ctx.lineTo(x + w - r, y);
-      ctx.quadraticCurveTo(x + w, y,     x + w, y + r);
-      ctx.lineTo(x + w, y + h - r);
-      ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-      ctx.lineTo(x + r, y + h);
-      ctx.quadraticCurveTo(x, y + h,     x, y + h - r);
-      ctx.lineTo(x, y + r);
-      ctx.quadraticCurveTo(x, y,         x + r, y);
-      ctx.closePath();
+      ctx.arc(cx, headCy, headR, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Body
+      var neckY  = headCy + headR;
+      var waistY = y + h * 0.68;
+      ctx.beginPath();
+      ctx.moveTo(cx, neckY);
+      ctx.lineTo(cx, waistY);
+      ctx.stroke();
+
+      // Arms
+      var armY = y + h * 0.40;
+      ctx.beginPath();
+      ctx.moveTo(x + w * 0.1, armY + h * 0.09);
+      ctx.lineTo(cx, armY);
+      ctx.lineTo(x + w * 0.9, armY + h * 0.09);
+      ctx.stroke();
+
+      // Legs
+      ctx.beginPath();
+      ctx.moveTo(cx, waistY);
+      ctx.lineTo(x + w * 0.18, y + h - lw);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(cx, waistY);
+      ctx.lineTo(x + w * 0.82, y + h - lw);
+      ctx.stroke();
+
+      ctx.restore();
     }
 
+    function drawCoin(x, y, w, h) {
+      var cx = x + w / 2;
+      var cy = y + h / 2;
+      var r  = Math.min(w, h) / 2 - 1;
+      ctx.save();
+
+      // Outer ring
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.fillStyle = '#FFD700';
+      ctx.fill();
+      ctx.strokeStyle = '#B8860B';
+      ctx.lineWidth = Math.max(1.5, r * 0.12);
+      ctx.stroke();
+
+      // Inner highlight
+      ctx.beginPath();
+      ctx.arc(cx, cy, r * 0.62, 0, Math.PI * 2);
+      ctx.fillStyle = '#FFF9C4';
+      ctx.fill();
+
+      // Star symbol
+      ctx.fillStyle = '#F9A825';
+      ctx.font = 'bold ' + Math.max(8, Math.floor(r * 1.0)) + 'px sans-serif';
+      ctx.textAlign    = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('★', cx, cy + 1);
+
+      ctx.restore();
+    }
+
+    function drawBrickWall(x, y, w, h) {
+      ctx.save();
+
+      // Dark mortar background
+      ctx.fillStyle = '#5D3A1A';
+      ctx.fillRect(x, y, w, h);
+
+      var bH = Math.max(8, Math.round(h / Math.max(2, Math.round(h / 14))));
+      var bW = Math.max(16, Math.round(w / Math.max(1, Math.round(w / 26))));
+      var rows = Math.ceil(h / bH);
+
+      for (var row = 0; row <= rows; row++) {
+        var offset = (row % 2) * (bW / 2);
+        var by = y + row * bH;
+        var cols = Math.ceil((w + bW) / bW) + 1;
+        for (var col = -1; col <= cols; col++) {
+          var bx = x + col * bW - offset;
+          var rx = Math.max(bx + 1, x);
+          var ry = Math.max(by + 1, y);
+          var rw = Math.min(bx + bW - 2, x + w) - rx;
+          var rh = Math.min(by + bH - 2, y + h) - ry;
+          if (rw > 2 && rh > 2) {
+            ctx.fillStyle = '#C0623A';
+            ctx.fillRect(rx, ry, rw, rh);
+            // Highlight top edge
+            ctx.fillStyle = '#D4795A';
+            ctx.fillRect(rx, ry, rw, Math.max(1, rh * 0.3));
+          }
+        }
+      }
+
+      ctx.restore();
+    }
+
+    function drawSpikes(x, y, w, h) {
+      ctx.save();
+
+      var baseH = Math.max(4, h * 0.28);
+      var baseY = y + h - baseH;
+
+      // Base plate
+      ctx.fillStyle = '#455A64';
+      ctx.fillRect(x, baseY, w, baseH);
+
+      // Spikes
+      var numSpikes = Math.max(2, Math.floor(w / 13));
+      var sW = w / numSpikes;
+
+      for (var i = 0; i < numSpikes; i++) {
+        var sx  = x + i * sW;
+        var tipX = sx + sW / 2;
+
+        ctx.beginPath();
+        ctx.moveTo(sx + 1, baseY + baseH);
+        ctx.lineTo(tipX, y + 1);
+        ctx.lineTo(sx + sW - 1, baseY + baseH);
+        ctx.closePath();
+        ctx.fillStyle = '#78909C';
+        ctx.fill();
+
+        // Shine on left face
+        ctx.beginPath();
+        ctx.moveTo(sx + sW * 0.28, baseY + baseH * 0.7);
+        ctx.lineTo(tipX - 1, y + 3);
+        ctx.strokeStyle = '#CFD8DC';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+
+      ctx.restore();
+    }
+
+    function drawEntity(e) {
+      ctx.save();
+      if (e === player && invincibleMs > 0 && Math.floor(invincibleMs / 150) % 2 === 1) {
+        ctx.restore();
+        return;
+      }
+
+      if (e.role === 'player') {
+        drawStickman(e.x, e.y, e.w, e.h, '#43A047');
+      } else if (e.role === 'enemy') {
+        drawStickman(e.x, e.y, e.w, e.h, '#E53935');
+      } else if (e.role === 'collectible') {
+        drawCoin(e.x, e.y, e.w, e.h);
+      } else if (e.role === 'obstacle') {
+        if (e.subtype === 'spikes') {
+          drawSpikes(e.x, e.y, e.w, e.h);
+        } else {
+          drawBrickWall(e.x, e.y, e.w, e.h);
+        }
+      }
+
+      ctx.restore();
+    }
+
+    // Render
     function render() {
       ctx.clearRect(0, 0, W, H);
 
@@ -402,31 +556,7 @@ function buildGameScript(specJson) {
       // Entities
       entities.forEach(function (e) {
         if (!e.alive) return;
-        // Flash player while invincible
-        if (e === player && invincibleMs > 0 && Math.floor(invincibleMs / 150) % 2 === 1) return;
-
-        var r = Math.min(6, e.w / 4, e.h / 4);
-        ctx.save();
-        ctx.globalAlpha = 0.88;
-        ctx.fillStyle   = e.color;
-        drawRoundedRect(e.x, e.y, e.w, e.h, r);
-        ctx.fill();
-        ctx.strokeStyle = 'rgba(0,0,0,0.4)';
-        ctx.lineWidth   = 2;
-        ctx.stroke();
-
-        // Name label
-        ctx.globalAlpha  = 1;
-        ctx.fillStyle    = '#fff';
-        var fontSize = Math.max(9, Math.min(13, e.h * 0.32));
-        ctx.font         = 'bold ' + fontSize + 'px sans-serif';
-        ctx.textAlign    = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.shadowColor  = '#000';
-        ctx.shadowBlur   = 3;
-        ctx.fillText(e.name, e.x + e.w / 2, e.y + e.h / 2);
-        ctx.shadowBlur   = 0;
-        ctx.restore();
+        drawEntity(e);
       });
 
       updateHUD();

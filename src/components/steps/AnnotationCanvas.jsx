@@ -5,6 +5,7 @@ import {
   normalizeBox,
   createElement,
   ROLES,
+  OBSTACLE_SUBTYPES,
   getRoleColor,
 } from '../../modules/annotationManager'
 
@@ -19,6 +20,7 @@ export default function AnnotationCanvas() {
   const [showPopup, setShowPopup] = useState(false)
   const [name, setName] = useState('')
   const [role, setRole] = useState('player')
+  const [subtype, setSubtype] = useState('brickwall')
   const nameInputRef = useRef(null)
 
   const elements = gameSpec.elements || []
@@ -76,6 +78,7 @@ export default function AnnotationCanvas() {
     setShowPopup(true)
     setName('')
     setRole('player')
+    setSubtype('brickwall')
     setTimeout(() => nameInputRef.current?.focus(), 50)
   }
 
@@ -156,7 +159,7 @@ export default function AnnotationCanvas() {
   // ── Popup confirm ─────────────────────────────────
   function confirmElement() {
     if (!name.trim()) return
-    const el = createElement({ name: name.trim(), role, normalizedBox: pendingBox })
+    const el = createElement({ name: name.trim(), role, subtype, normalizedBox: pendingBox })
     updateGameSpec({ elements: [...elements, el] })
     setShowPopup(false)
     setPendingBox(null)
@@ -229,6 +232,24 @@ export default function AnnotationCanvas() {
                 </button>
               ))}
             </div>
+
+            {role === 'obstacle' && (
+              <div className="subtype-row">
+                <p className="subtype-label">Obstacle style:</p>
+                <div className="subtype-btns">
+                  {OBSTACLE_SUBTYPES.map(s => (
+                    <button
+                      key={s.value}
+                      className={`subtype-btn ${subtype === s.value ? 'selected' : ''}`}
+                      onClick={() => setSubtype(s.value)}
+                    >
+                      {s.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="popup-actions">
               <button className="btn btn-secondary" onClick={cancelPopup}>Cancel</button>
               <button className="btn btn-primary" onClick={confirmElement} disabled={!name.trim()}>

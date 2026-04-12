@@ -27,15 +27,22 @@ export function normalizeBox(box, canvasW, canvasH) {
 
 /**
  * Creates a new element entry for the GameSpec.
+ * subtype is used for obstacles: 'brickwall' | 'spikes' (null for other roles)
  */
-export function createElement({ name, role, normalizedBox, canvasW, canvasH }) {
+export function createElement({ name, role, subtype, normalizedBox }) {
   return {
     id: `${role}-${Date.now()}`,
     name,
     role,
+    subtype: role === 'obstacle' ? (subtype || 'brickwall') : null,
     ...normalizedBox,
   }
 }
+
+export const OBSTACLE_SUBTYPES = [
+  { value: 'brickwall', label: '🧱 Brick Wall' },
+  { value: 'spikes',    label: '⚡ Spikes'     },
+]
 
 export const ROLES = [
   { value: 'player',      label: '🧍 Player',      color: '#4caf50' },
