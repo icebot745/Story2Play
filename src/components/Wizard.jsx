@@ -25,8 +25,11 @@ export default function Wizard() {
   const isFirst = currentStep === 0
   const isLast = currentStep === STEPS.length - 1
 
-  // Step 1 requires an image before proceeding
-  const canProceed = currentStep === 0 ? !!gameSpec.background : true
+  // Gate each step before proceeding
+  const canProceed =
+    currentStep === 0 ? !!gameSpec.background :
+    currentStep === 1 ? gameSpec.elements?.length > 0 :
+    true
 
   return (
     <div className="wizard">
