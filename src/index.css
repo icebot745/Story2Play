@@ -213,6 +213,15 @@ body {
   display: block;
 }
 
+.image-preview {
+  width: 100%;
+  height: auto;
+  max-height: 320px;
+  object-fit: contain;
+  border-radius: 0.75rem;
+  display: block;
+}
+
 .btn-small {
   align-self: flex-start;
   padding: 0.4rem 1rem;

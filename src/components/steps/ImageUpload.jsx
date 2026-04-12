@@ -1,28 +1,13 @@
-import { useRef, useState, useEffect } from 'react'
+import { useRef, useState } from 'react'
 import { useGame } from '../../context/GameContext'
-import { imageToSvg, isValidImageFile } from '../../modules/imageProcessor'
+import { imageToDataUrl, isValidImageFile } from '../../modules/imageProcessor'
 
 export default function ImageUpload() {
   const { gameSpec, updateGameSpec } = useGame()
   const [status, setStatus] = useState('idle') // idle | loading | done | error
   const [errorMsg, setErrorMsg] = useState('')
   const [isDragging, setIsDragging] = useState(false)
-  const [elapsed, setElapsed] = useState(0)
   const inputRef = useRef(null)
-  const timerRef = useRef(null)
-
-  function startTimer() {
-    setElapsed(0)
-    timerRef.current = setInterval(() => {
-      setElapsed(s => s + 1)
-    }, 1000)
-  }
-
-  function stopTimer() {
-    clearInterval(timerRef.current)
-  }
-
-  useEffect(() => () => clearInterval(timerRef.current), [])
 
   async function handleFile(file) {
     if (!isValidImageFile(file)) {
@@ -33,17 +18,14 @@ export default function ImageUpload() {
 
     setStatus('loading')
     setErrorMsg('')
-    startTimer()
 
     try {
-      const svg = await imageToSvg(file)
-      updateGameSpec({ background: svg })
+      const dataUrl = await imageToDataUrl(file)
+      updateGameSpec({ background: dataUrl })
       setStatus('done')
     } catch (err) {
       setErrorMsg(err.message)
       setStatus('error')
-    } finally {
-      stopTimer()
     }
   }
 
@@ -72,14 +54,16 @@ export default function ImageUpload() {
     updateGameSpec({ background: null })
     setStatus('idle')
     setErrorMsg('')
-    setElapsed(0)
     if (inputRef.current) inputRef.current.value = ''
   }
 
   return (
     <div className="step-content">
-      <h2>Step 1: Upload Your Game Screen</h2>
-      <p>Upload a picture of what you want your game to look like — a drawing, screenshot, or any image!</p>
+      <h2>Step 1: Upload Your Game World</h2>
+      <p>
+        Draw or take a photo of your game background — the world where your characters will move.
+        <strong> Don't add characters yet</strong>, we'll place those in the next step!
+      </p>
 
       {status !== 'done' && (
         <div
@@ -99,8 +83,7 @@ export default function ImageUpload() {
           {status === 'loading' ? (
             <>
               <div className="spinner" />
-              <p><strong>Converting to SVG…</strong></p>
-              <p className="upload-hint">{elapsed}s — bigger images take longer</p>
+              <p>Loading image…</p>
             </>
           ) : (
             <>
@@ -119,9 +102,10 @@ export default function ImageUpload() {
 
       {status === 'done' && gameSpec.background && (
         <div className="svg-preview">
-          <div
-            className="svg-container"
-            dangerouslySetInnerHTML={{ __html: gameSpec.background }}
+          <img
+            src={gameSpec.background}
+            alt="Your game world"
+            className="image-preview"
           />
           <button className="btn btn-secondary btn-small" onClick={reset}>
             ↩ Use a different image
