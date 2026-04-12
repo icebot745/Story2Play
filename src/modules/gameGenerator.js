@@ -175,6 +175,10 @@ function buildGameScript(specJson) {
     var timeLeft    = timeLimit ? timeLimit * 1000 : null;  // ms
     var gameOver    = false, won = false;
     var invincibleMs= 0;
+    var onGround    = false;  // tracks whether player is standing on something
+
+    var GRAVITY   = 900;  // px/s²
+    var JUMP_SPD  = 430;  // px/s upward
 
     // Input
     var keys = {};
@@ -234,6 +238,7 @@ function buildGameScript(specJson) {
       timeLeft     = timeLimit ? timeLimit * 1000 : null;
       gameOver     = false; won = false;
       invincibleMs = 0;
+      onGround     = false;
       entities.forEach(function (e) {
         e.x = e.startX; e.y = e.startY;
         e.vx = 0; e.vy = 0;
@@ -284,18 +289,12 @@ function buildGameScript(specJson) {
       if (invincibleMs > 0) invincibleMs -= ms;
       if (timeLeft    !== null) timeLeft -= ms;
 
+      // ── Non-player entity movement (unchanged top-down logic) ──
       entities.forEach(function (e) {
-        if (!e.alive) return;
+        if (!e.alive || e === player) return;
         e.vx = 0; e.vy = 0;
 
-        if (e.mvType === 'arrow-keys' && e === player) {
-          var spd = e.speed * 60 * dt;
-          if (keys['ArrowLeft']  || keys['a'] || keys['A']) e.vx = -spd;
-          if (keys['ArrowRight'] || keys['d'] || keys['D']) e.vx =  spd;
-          if (keys['ArrowUp']    || keys['w'] || keys['W']) e.vy = -spd;
-          if (keys['ArrowDown']  || keys['s'] || keys['S']) e.vy =  spd;
-
-        } else if (e.mvType === 'auto-patrol') {
+        if (e.mvType === 'auto-patrol') {
           var spd = e.speed * 60 * dt;
           e.vx = spd * e.patrolDir;
           if (e.x <= 0)        { e.patrolDir =  1; e.x = 0; }
@@ -316,7 +315,70 @@ function buildGameScript(specJson) {
         e.y = Math.max(0, Math.min(H - e.h, e.y));
       });
 
-      // Collisions with player
+      // ── Player platformer physics ──────────────────────
+      if (player && player.alive && player.mvType === 'arrow-keys') {
+        var hspd = player.speed * 60; // px/s
+
+        // Horizontal velocity from keys
+        player.vx = 0;
+        if (keys['ArrowLeft']  || keys['a'] || keys['A']) player.vx = -hspd;
+        if (keys['ArrowRight'] || keys['d'] || keys['D']) player.vx =  hspd;
+
+        // Gravity
+        player.vy += GRAVITY * dt;
+
+        // --- Move X, then resolve X obstacle collisions ---
+        player.x += player.vx * dt;
+        player.x  = Math.max(0, Math.min(W - player.w, player.x));
+
+        entities.forEach(function (obs) {
+          if (!obs.alive || obs.role !== 'obstacle') return;
+          if (!overlaps(player, obs)) return;
+          var pcx = player.x + player.w / 2;
+          var ocx = obs.x   + obs.w   / 2;
+          if (pcx < ocx) {
+            player.x = obs.x - player.w;
+          } else {
+            player.x = obs.x + obs.w;
+          }
+          player.vx = 0;
+        });
+
+        // --- Move Y, then resolve Y obstacle collisions + ground ---
+        player.y += player.vy * dt;
+        onGround   = false;
+
+        // Ground
+        if (player.y + player.h >= H) {
+          player.y = H - player.h;
+          player.vy = 0;
+          onGround  = true;
+        }
+
+        // Obstacle tops / bottoms
+        entities.forEach(function (obs) {
+          if (!obs.alive || obs.role !== 'obstacle') return;
+          if (!overlaps(player, obs)) return;
+          if (player.vy >= 0) {
+            // Falling — land on top
+            player.y  = obs.y - player.h;
+            player.vy = 0;
+            onGround  = true;
+          } else {
+            // Rising — hit underside
+            player.y  = obs.y + obs.h;
+            player.vy = 0;
+          }
+        });
+
+        // Jump (only when standing on something)
+        if (onGround && (keys['ArrowUp'] || keys[' '] || keys['w'] || keys['W'])) {
+          player.vy = -JUMP_SPD;
+          onGround  = false;
+        }
+      }
+
+      // ── Collision consequences ─────────────────────────
       if (player && player.alive) {
         entities.forEach(function (e) {
           if (!e.alive || e === player) return;
@@ -328,26 +390,26 @@ function buildGameScript(specJson) {
 
           } else if (e.role === 'enemy') {
             if (winType === 'defeat-all-enemies') {
-              // In defeat-enemies mode touching an enemy defeats it
               e.alive = false;
               if (scoring) score += pointsEa;
             } else {
               if (invincibleMs <= 0) {
                 lives--;
                 invincibleMs = 1500;
-                // Bounce player away from enemy
+                // Bounce player left/right and up a bit
                 var dx = (player.x + player.w / 2) - (e.x + e.w / 2);
-                var dy = (player.y + player.h / 2) - (e.y + e.h / 2);
-                var dist = Math.sqrt(dx * dx + dy * dy) || 1;
-                player.x += (dx / dist) * 32;
-                player.y += (dy / dist) * 32;
-                player.x = Math.max(0, Math.min(W - player.w, player.x));
-                player.y = Math.max(0, Math.min(H - player.h, player.y));
+                player.x  += (dx >= 0 ? 1 : -1) * 36;
+                player.vy  = -220;
+                player.x   = Math.max(0, Math.min(W - player.w, player.x));
               }
             }
 
           } else if (e.role === 'obstacle') {
-            resolveOverlap(player, e);
+            if (e.subtype === 'spikes') {
+              // Spikes kill instantly
+              lives = 0;
+            }
+            // Physical blocking is handled in the physics pass above
           }
         });
       }
