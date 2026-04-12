@@ -3,10 +3,11 @@
  * Not all types make sense for every role — defaults are suggested per role.
  */
 export const MOVEMENT_TYPES = [
-  { value: 'arrow-keys',    label: '🎮 Arrow keys',      description: 'Player controls with keys or buttons' },
-  { value: 'auto-patrol',   label: '↔️ Auto patrol',     description: 'Moves left and right on its own' },
-  { value: 'follows-player',label: '🏃 Follows player',  description: 'Chases the player around' },
-  { value: 'stationary',    label: '🗿 Stays still',     description: 'Does not move' },
+  { value: 'arrow-keys',     label: '🎮 Arrow keys',       description: 'Player controls with keys or buttons' },
+  { value: 'auto-patrol',    label: '↔️ Patrol L/R',       description: 'Moves left and right on its own' },
+  { value: 'auto-patrol-v',  label: '↕️ Patrol U/D',       description: 'Moves up and down on its own' },
+  { value: 'follows-player', label: '🏃 Follows player',   description: 'Chases the player around' },
+  { value: 'stationary',     label: '🗿 Stays still',      description: 'Does not move' },
 ]
 
 export const DEFAULT_MOVEMENT_BY_ROLE = {

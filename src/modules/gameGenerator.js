@@ -178,7 +178,8 @@ function buildGameScript(specJson) {
     var onGround    = false;  // tracks whether player is standing on something
 
     var GRAVITY   = 900;  // px/s²
-    var JUMP_SPD  = 430;  // px/s upward
+    var JUMP_SPD  = 320;  // px/s upward (lower = shorter jump)
+    var standingOn = null; // obstacle the player is currently riding
 
     // Input
     var keys = {};
@@ -239,6 +240,7 @@ function buildGameScript(specJson) {
       gameOver     = false; won = false;
       invincibleMs = 0;
       onGround     = false;
+      standingOn   = null;
       entities.forEach(function (e) {
         e.x = e.startX; e.y = e.startY;
         e.vx = 0; e.vy = 0;
@@ -283,13 +285,25 @@ function buildGameScript(specJson) {
       return false;
     }
 
+    // Respawn player at their start position
+    function respawnPlayer() {
+      if (!player) return;
+      player.x  = player.startX;
+      player.y  = player.startY;
+      player.vx = 0;
+      player.vy = 0;
+      standingOn = null;
+    }
+
     // Update
     function update(dt) {
       var ms = dt * 1000;
       if (invincibleMs > 0) invincibleMs -= ms;
       if (timeLeft    !== null) timeLeft -= ms;
 
-      // ── Non-player entity movement (unchanged top-down logic) ──
+      // ── Non-player entity movement ─────────────────────
+      // frameVx/frameVy record the displacement each entity moved this frame
+      // so the player can ride moving obstacles.
       entities.forEach(function (e) {
         if (!e.alive || e === player) return;
         e.vx = 0; e.vy = 0;
@@ -300,6 +314,12 @@ function buildGameScript(specJson) {
           if (e.x <= 0)        { e.patrolDir =  1; e.x = 0; }
           if (e.x + e.w >= W)  { e.patrolDir = -1; e.x = W - e.w; }
 
+        } else if (e.mvType === 'auto-patrol-v') {
+          var spd = e.speed * 60 * dt;
+          e.vy = spd * e.patrolDir;
+          if (e.y <= 0)        { e.patrolDir =  1; e.y = 0; }
+          if (e.y + e.h >= H)  { e.patrolDir = -1; e.y = H - e.h; }
+
         } else if (e.mvType === 'follows-player' && player && player.alive) {
           var spd  = e.speed * 60 * dt;
           var dx   = (player.x + player.w / 2) - (e.x + e.w / 2);
@@ -308,6 +328,10 @@ function buildGameScript(specJson) {
           e.vx = (dx / dist) * spd;
           e.vy = (dy / dist) * spd;
         }
+
+        // Store frame displacement before applying (for player riding)
+        e.frameVx = e.vx;
+        e.frameVy = e.vy;
 
         e.x += e.vx;
         e.y += e.vy;
@@ -319,7 +343,14 @@ function buildGameScript(specJson) {
       if (player && player.alive && player.mvType === 'arrow-keys') {
         var hspd = player.speed * 60; // px/s
 
-        // Horizontal velocity from keys
+        // Carry player with the platform they're standing on
+        if (standingOn && standingOn.alive) {
+          player.x += standingOn.frameVx || 0;
+          player.y += standingOn.frameVy || 0;
+          player.x  = Math.max(0, Math.min(W - player.w, player.x));
+        }
+
+        // Horizontal from keys
         player.vx = 0;
         if (keys['ArrowLeft']  || keys['a'] || keys['A']) player.vx = -hspd;
         if (keys['ArrowRight'] || keys['d'] || keys['D']) player.vx =  hspd;
@@ -327,7 +358,7 @@ function buildGameScript(specJson) {
         // Gravity
         player.vy += GRAVITY * dt;
 
-        // --- Move X, then resolve X obstacle collisions ---
+        // --- Move X → resolve X obstacle collisions ---
         player.x += player.vx * dt;
         player.x  = Math.max(0, Math.min(W - player.w, player.x));
 
@@ -336,34 +367,32 @@ function buildGameScript(specJson) {
           if (!overlaps(player, obs)) return;
           var pcx = player.x + player.w / 2;
           var ocx = obs.x   + obs.w   / 2;
-          if (pcx < ocx) {
-            player.x = obs.x - player.w;
-          } else {
-            player.x = obs.x + obs.w;
-          }
+          player.x = pcx < ocx ? obs.x - player.w : obs.x + obs.w;
           player.vx = 0;
         });
 
-        // --- Move Y, then resolve Y obstacle collisions + ground ---
+        // --- Move Y → resolve Y obstacle collisions + ground ---
         player.y += player.vy * dt;
+        standingOn = null;
         onGround   = false;
 
-        // Ground
+        // Canvas ground
         if (player.y + player.h >= H) {
-          player.y = H - player.h;
+          player.y  = H - player.h;
           player.vy = 0;
           onGround  = true;
         }
 
-        // Obstacle tops / bottoms
+        // Obstacle surfaces
         entities.forEach(function (obs) {
           if (!obs.alive || obs.role !== 'obstacle') return;
           if (!overlaps(player, obs)) return;
           if (player.vy >= 0) {
             // Falling — land on top
-            player.y  = obs.y - player.h;
-            player.vy = 0;
-            onGround  = true;
+            player.y   = obs.y - player.h;
+            player.vy  = 0;
+            onGround   = true;
+            standingOn = obs;    // remember so we ride it next frame
           } else {
             // Rising — hit underside
             player.y  = obs.y + obs.h;
@@ -371,10 +400,11 @@ function buildGameScript(specJson) {
           }
         });
 
-        // Jump (only when standing on something)
+        // Jump (only when grounded)
         if (onGround && (keys['ArrowUp'] || keys[' '] || keys['w'] || keys['W'])) {
-          player.vy = -JUMP_SPD;
-          onGround  = false;
+          player.vy  = -JUMP_SPD;
+          onGround   = false;
+          standingOn = null;
         }
       }
 
@@ -392,24 +422,18 @@ function buildGameScript(specJson) {
             if (winType === 'defeat-all-enemies') {
               e.alive = false;
               if (scoring) score += pointsEa;
-            } else {
-              if (invincibleMs <= 0) {
-                lives--;
-                invincibleMs = 1500;
-                // Bounce player left/right and up a bit
-                var dx = (player.x + player.w / 2) - (e.x + e.w / 2);
-                player.x  += (dx >= 0 ? 1 : -1) * 36;
-                player.vy  = -220;
-                player.x   = Math.max(0, Math.min(W - player.w, player.x));
-              }
+            } else if (invincibleMs <= 0) {
+              lives--;
+              invincibleMs = 2000;
+              respawnPlayer();
             }
 
-          } else if (e.role === 'obstacle') {
-            if (e.subtype === 'spikes') {
-              // Spikes kill instantly
-              lives = 0;
+          } else if (e.role === 'obstacle' && e.subtype === 'spikes') {
+            if (invincibleMs <= 0) {
+              lives--;
+              invincibleMs = 2000;
+              respawnPlayer();
             }
-            // Physical blocking is handled in the physics pass above
           }
         });
       }
