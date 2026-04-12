@@ -1,0 +1,154 @@
+/* ── Reset & base ─────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  background: #f0f4ff;
+  color: #1a1a2e;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+/* ── Wizard shell ─────────────────────────────────── */
+.wizard {
+  background: #ffffff;
+  border-radius: 1.5rem;
+  box-shadow: 0 8px 32px rgba(80, 80, 180, 0.12);
+  width: 100%;
+  max-width: 720px;
+  min-height: 540px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ── Header ───────────────────────────────────────── */
+.wizard-header {
+  background: linear-gradient(135deg, #6c63ff, #48c6ef);
+  color: white;
+  padding: 1.5rem 2rem 1.25rem;
+  text-align: center;
+}
+
+.wizard-header h1 {
+  font-size: 2rem;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+}
+
+.tagline {
+  font-size: 1rem;
+  opacity: 0.9;
+  margin-top: 0.25rem;
+}
+
+/* ── Step nav dots ────────────────────────────────── */
+.step-nav {
+  display: flex;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 1.25rem 2rem;
+  background: #f8f9ff;
+  border-bottom: 1px solid #e8eaf6;
+}
+
+.step-dot {
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 50%;
+  border: 2.5px solid #c5cae9;
+  background: white;
+  color: #9fa8da;
+  font-weight: 700;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.step-dot:hover  { border-color: #6c63ff; color: #6c63ff; }
+.step-dot.done   { background: #e8f5e9; border-color: #66bb6a; color: #388e3c; }
+.step-dot.active { background: #6c63ff; border-color: #6c63ff; color: white; }
+
+/* ── Body ─────────────────────────────────────────── */
+.wizard-body {
+  flex: 1;
+  padding: 2rem;
+}
+
+.step-content h2 {
+  font-size: 1.4rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+  color: #3d3d8f;
+}
+
+.step-content p {
+  font-size: 1rem;
+  color: #555;
+  margin-bottom: 1.5rem;
+  line-height: 1.6;
+}
+
+.placeholder-box {
+  border: 2px dashed #c5cae9;
+  border-radius: 1rem;
+  padding: 3rem;
+  text-align: center;
+  color: #9fa8da;
+  font-size: 1rem;
+  background: #f8f9ff;
+}
+
+/* ── Footer ───────────────────────────────────────── */
+.wizard-footer {
+  display: flex;
+  justify-content: space-between;
+  padding: 1.25rem 2rem;
+  border-top: 1px solid #e8eaf6;
+  background: #f8f9ff;
+}
+
+.wizard-footer:has(.btn:only-child) { justify-content: flex-end; }
+
+/* ── Buttons ──────────────────────────────────────── */
+.btn {
+  padding: 0.65rem 1.75rem;
+  border-radius: 2rem;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  border: none;
+  transition: transform 0.1s, box-shadow 0.1s;
+}
+
+.btn:active { transform: scale(0.97); }
+
+.btn-primary {
+  background: linear-gradient(135deg, #6c63ff, #48c6ef);
+  color: white;
+  box-shadow: 0 4px 14px rgba(108, 99, 255, 0.35);
+}
+
+.btn-primary:hover  { box-shadow: 0 6px 18px rgba(108, 99, 255, 0.45); }
+
+.btn-secondary {
+  background: white;
+  color: #6c63ff;
+  border: 2px solid #6c63ff;
+}
+
+.btn-secondary:hover { background: #f0eeff; }
+
+/* ── Responsive ───────────────────────────────────── */
+@media (max-width: 480px) {
+  .wizard { border-radius: 0; min-height: 100vh; }
+  .wizard-header h1 { font-size: 1.5rem; }
+  .wizard-body { padding: 1.25rem; }
+  .step-dot { width: 2rem; height: 2rem; font-size: 0.75rem; }
+}
