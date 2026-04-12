@@ -29,6 +29,7 @@ export default function Wizard() {
   const canProceed =
     currentStep === 0 ? !!gameSpec.background :
     currentStep === 1 ? gameSpec.elements?.length > 0 :
+    currentStep === 3 ? !!gameSpec.winCondition?.type :
     true
 
   return (
