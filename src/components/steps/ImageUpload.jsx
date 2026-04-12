@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useRef, useState, useEffect } from 'react'
 import { useGame } from '../../context/GameContext'
 import { imageToSvg, isValidImageFile } from '../../modules/imageProcessor'
 
@@ -7,7 +7,22 @@ export default function ImageUpload() {
   const [status, setStatus] = useState('idle') // idle | loading | done | error
   const [errorMsg, setErrorMsg] = useState('')
   const [isDragging, setIsDragging] = useState(false)
+  const [elapsed, setElapsed] = useState(0)
   const inputRef = useRef(null)
+  const timerRef = useRef(null)
+
+  function startTimer() {
+    setElapsed(0)
+    timerRef.current = setInterval(() => {
+      setElapsed(s => s + 1)
+    }, 1000)
+  }
+
+  function stopTimer() {
+    clearInterval(timerRef.current)
+  }
+
+  useEffect(() => () => clearInterval(timerRef.current), [])
 
   async function handleFile(file) {
     if (!isValidImageFile(file)) {
@@ -18,6 +33,7 @@ export default function ImageUpload() {
 
     setStatus('loading')
     setErrorMsg('')
+    startTimer()
 
     try {
       const svg = await imageToSvg(file)
@@ -26,6 +42,8 @@ export default function ImageUpload() {
     } catch (err) {
       setErrorMsg(err.message)
       setStatus('error')
+    } finally {
+      stopTimer()
     }
   }
 
@@ -54,6 +72,7 @@ export default function ImageUpload() {
     updateGameSpec({ background: null })
     setStatus('idle')
     setErrorMsg('')
+    setElapsed(0)
     if (inputRef.current) inputRef.current.value = ''
   }
 
@@ -65,7 +84,7 @@ export default function ImageUpload() {
       {status !== 'done' && (
         <div
           className={`drop-zone ${isDragging ? 'dragging' : ''} ${status === 'error' ? 'has-error' : ''}`}
-          onClick={() => inputRef.current?.click()}
+          onClick={() => status !== 'loading' && inputRef.current?.click()}
           onDrop={onDrop}
           onDragOver={onDragOver}
           onDragLeave={onDragLeave}
@@ -80,7 +99,8 @@ export default function ImageUpload() {
           {status === 'loading' ? (
             <>
               <div className="spinner" />
-              <p>Converting to SVG…</p>
+              <p><strong>Converting to SVG…</strong></p>
+              <p className="upload-hint">{elapsed}s — bigger images take longer</p>
             </>
           ) : (
             <>
