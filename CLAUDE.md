@@ -38,28 +38,117 @@ The app guides the user conversationally through each step, one at a time.
 - They can go back to any step and adjust, then re-preview.
 - When satisfied, they download the game as a single self-contained `.html` file.
 
-## Technical Architecture
+## Module Architecture
 
-### Stack
+The app is composed of logical modules coordinated by a central orchestrator.
+Each module has a clear input/output interface and can be built and tested independently.
+
+```
+┌─────────────────────────────────────────────────┐
+│              WizardOrchestrator                  │
+│  Manages step flow, holds game state, triggers   │
+│  other modules in sequence                       │
+└──────┬──────────────────────────────────────────┘
+       │ calls
+       ▼
+┌──────────────┐   ┌─────────────────┐   ┌──────────────────┐
+│ ImageProcessor│   │AnnotationManager│   │GameDefinition    │
+│              │   │                 │   │Builder           │
+│ image → SVG  │   │ Canvas drawing  │   │ Collects steps   │
+│ (Step 1)     │   │ circle → label  │   │ 3, 4, 5 into     │
+│              │   │ + position      │   │ structured spec  │
+│ ImageTracer  │   │ (Step 2)        │   │                  │
+└──────────────┘   └─────────────────┘   └────────┬─────────┘
+                                                   │ outputs GameSpec
+                                                   ▼
+                                         ┌──────────────────┐
+                                         │  GameGenerator   │
+                                         │                  │
+                                         │ GameSpec → .html │
+                                         │ SVG + JS engine  │
+                                         └────────┬─────────┘
+                                                  │
+                                                  ▼
+                                         ┌──────────────────┐
+                                         │  PreviewEngine   │
+                                         │                  │
+                                         │ Renders in iframe│
+                                         │ + download button│
+                                         └──────────────────┘
+```
+
+### Module Responsibilities
+
+| Module | Input | Output |
+|---|---|---|
+| **WizardOrchestrator** | User actions | Step transitions, shared state |
+| **ImageProcessor** | Raw image file | SVG string |
+| **AnnotationManager** | SVG + user drawing | `[{name, role, x, y, w, h}]` |
+| **GameDefinitionBuilder** | Steps 3–5 form data | `GameSpec` object |
+| **GameGenerator** | `GameSpec` | `.html` string |
+| **PreviewEngine** | `.html` string | Live iframe + download button |
+
+### The `GameSpec` Object
+
+```js
+{
+  background: "<svg>...</svg>",
+  elements: [
+    { id: "hero", role: "player", x: 120, y: 80, w: 40, h: 40 },
+    { id: "coin", role: "collectible", x: 300, y: 150, w: 20, h: 20 }
+  ],
+  movements: [
+    { elementId: "hero", type: "arrow-keys", speed: 5 },
+    { elementId: "enemy", type: "auto-patrol", speed: 2 }
+  ],
+  winCondition: { type: "collect-all", target: "coin" },
+  rules: { scoring: true, lives: 3 }
+}
+```
+
+### Folder Structure
+
+```
+src/
+  modules/
+    imageProcessor.js        ← image → SVG (ImageTracer.js)
+    annotationManager.js     ← canvas drawing + label extraction
+    gameDefinitionBuilder.js ← assembles GameSpec from form data
+    gameGenerator.js         ← GameSpec → .html output
+    previewEngine.js         ← iframe render + download
+  components/
+    Wizard.jsx               ← orchestrator UI + step router
+    steps/
+      ImageUpload.jsx
+      AnnotationCanvas.jsx
+      MovementForm.jsx
+      WinConditionForm.jsx
+      SpecialRulesForm.jsx
+      Preview.jsx
+  context/
+    GameContext.jsx           ← shared GameSpec state across steps
+```
+
+## Technical Stack
 
 | Layer | Choice | Notes |
 |---|---|---|
 | Frontend | Vite + React | Simple wizard UI, one component per step |
 | Annotation | HTML5 Canvas overlay | Freehand circle drawing on the uploaded image |
-| Image → SVG | ImageTracer.js | Client-side rasterimage to SVG conversion |
+| Image → SVG | ImageTracer.js | Client-side raster-to-SVG conversion |
 | Game engine | SVG + vanilla JS | Embedded in the output `.html` file |
 | Output | Single `.html` file | Self-contained, downloadable, no server needed |
 | Backend | None | Fully client-side, session-based |
 
-### Key Decisions
-- **No AI for now.** Game logic is generated from structured rule templates based on user input. AI can be layered in later.
+## Key Decisions
+- **No AI in the web app.** Game logic is generated from structured rule templates. API cost = $0 per user.
 - **No sound.** Out of scope for initial version.
-- **No accounts or persistence.** Everything lives in the browser session. Output is the downloaded file.
-- **SVG-based game output.** Characters are SVG elements that move around the SVG background — simpler to manipulate than Canvas sprites.
+- **No accounts or persistence.** Everything lives in the browser session.
+- **SVG-based game output.** Characters are SVG elements — simpler to move than Canvas sprites.
 - **Responsive web app.** Works on desktop and tablet browsers.
 - **Single viewport.** The entire game fits in one screen — no scrolling levels.
 
-### Game Engine (inside output `.html`)
+## Game Engine (inside output `.html`)
 - SVG render loop driven by `requestAnimationFrame`
 - Keyboard event handling (arrow keys, etc.)
 - Character/element system using SVG elements (position, velocity, type)
