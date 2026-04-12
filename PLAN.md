@@ -124,6 +124,11 @@
 - [ ] Test with several different image types and game configurations
 - [ ] Cross-browser test the downloaded game file (Chrome, Firefox, Safari)
 - [ ] Accessibility basics: keyboard navigation, readable font sizes
+- [ ] Child-friendly "How to use" guide
+  - Welcome/intro screen before Step 1 that explains the full flow in simple language
+  - Step-by-step illustrated instructions kids can refer back to
+  - A "?" help button on each step showing a tip for that step
+  - Encouraging tone throughout — celebrate each completed step
 
 **Done when:** Full end-to-end flow works reliably with no rough edges.
 
