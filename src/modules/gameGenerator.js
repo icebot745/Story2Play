@@ -1,664 +1,280 @@
-/**
- * generateGame(gameSpec) → self-contained HTML string
- *
- * Takes the completed GameSpec and produces a single .html file that runs
- * the game in any browser with no external dependencies.
- */
+import { buildDefaultMovements } from './gameDefinitionBuilder.js'
+
+const ROLE_COLOR = {
+  player:      '#4caf50',
+  enemy:       '#f44336',
+  collectible: '#ffc107',
+  obstacle:    '#795548',
+}
+
 export function generateGame(gameSpec) {
-  const specJson = JSON.stringify(gameSpec)
-    .replace(/</g, '\\u003c')
-    .replace(/>/g, '\\u003e')
-    .replace(/&/g, '\\u0026')
+  const { background, elements = [], winCondition = {}, rules = {} } = gameSpec
+  let { movements = [] } = gameSpec
+
+  if (movements.length === 0 && elements.length > 0) {
+    movements = buildDefaultMovements(elements)
+  }
+
+  const safeRules = {
+    scoring:             rules.scoring             ?? false,
+    pointsPerCollectible:rules.pointsPerCollectible ?? 10,
+    lives:               rules.lives               ?? 3,
+    timeLimit:           rules.timeLimit            ?? null,
+  }
+
+  const gameData = JSON.stringify({ elements, movements, winCondition, rules: safeRules })
+  const bgSrc    = JSON.stringify(background ?? '')
 
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>My Game</title>
-  <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      background: #1a1a2e;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      min-height: 100vh;
-      font-family: 'Comic Sans MS', 'Chalkboard SE', cursive;
-      overflow: hidden;
-    }
-    #game-wrap { position: relative; display: inline-block; }
-    canvas { display: block; border: 3px solid rgba(255,255,255,0.3); border-radius: 8px; }
-    #hud {
-      position: absolute; top: 8px; left: 0; right: 0;
-      display: flex; justify-content: space-between; padding: 0 12px;
-      pointer-events: none; font-size: 18px; font-weight: bold;
-      color: #fff; text-shadow: 1px 1px 3px #000;
-    }
-    #overlay {
-      position: absolute; inset: 0;
-      background: rgba(0,0,0,0.75);
-      display: flex; flex-direction: column;
-      align-items: center; justify-content: center;
-      color: #fff; text-align: center; border-radius: 5px;
-    }
-    #overlay h1 { font-size: 3rem; margin-bottom: 0.5rem; }
-    #overlay p  { font-size: 1.2rem; margin-bottom: 1.5rem; }
-    #overlay button {
-      font-size: 1.1rem; padding: 0.75rem 2rem;
-      border: none; border-radius: 2rem;
-      background: #6c63ff; color: #fff; cursor: pointer;
-      font-family: inherit; transition: background 0.15s;
-    }
-    #overlay button:hover { background: #5a52e0; }
-    #overlay.hidden { display: none; }
-    #dpad {
-      display: none;
-      position: fixed; bottom: 20px; left: 20px;
-      gap: 4px;
-      grid-template-columns: repeat(3, 52px);
-      grid-template-rows: repeat(3, 52px);
-    }
-    @media (pointer: coarse) { #dpad { display: grid; } }
-    .dpad-btn {
-      background: rgba(255,255,255,0.25);
-      border: 2px solid rgba(255,255,255,0.45);
-      border-radius: 10px; color: #fff; font-size: 1.3rem;
-      cursor: pointer; user-select: none;
-      display: flex; align-items: center; justify-content: center;
-      -webkit-tap-highlight-color: transparent;
-    }
-    .dpad-btn:active { background: rgba(255,255,255,0.55); }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>My Story2Play Game</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#111;display:flex;flex-direction:column;align-items:center;
+     justify-content:center;height:100vh;overflow:hidden;
+     font-family:system-ui,sans-serif;touch-action:none}
+canvas{display:block;border:3px solid #333;max-width:100vw;max-height:80vh}
+#hud{position:fixed;top:0;left:0;right:0;padding:.4rem 1rem;
+     display:flex;justify-content:space-between;align-items:center;
+     background:rgba(0,0,0,.55);color:#fff;font-size:1.1rem;font-weight:700;z-index:10}
+#controls{position:fixed;bottom:.75rem;left:50%;transform:translateX(-50%);
+          display:grid;grid-template-columns:repeat(3,3.2rem);
+          grid-template-rows:repeat(2,3.2rem);gap:.3rem;z-index:10}
+.cb{width:3.2rem;height:3.2rem;border-radius:.5rem;border:none;
+    background:rgba(255,255,255,.22);color:#fff;font-size:1.4rem;
+    cursor:pointer;display:flex;align-items:center;justify-content:center;
+    user-select:none;-webkit-user-select:none}
+.cb:active{background:rgba(255,255,255,.45)}
+#overlay{position:fixed;inset:0;background:rgba(0,0,0,.78);
+         display:flex;flex-direction:column;align-items:center;
+         justify-content:center;color:#fff;text-align:center;z-index:20;padding:1rem}
+#overlay.hidden{display:none}
+#overlay h1{font-size:3rem;margin-bottom:.4rem}
+#overlay h2{font-size:1.6rem;margin-bottom:.4rem}
+#overlay p{font-size:1.1rem;margin-bottom:1.5rem;color:#ccc}
+#overlay button{padding:.75rem 2.25rem;font-size:1.1rem;font-weight:700;
+                background:#6c63ff;color:#fff;border:none;
+                border-radius:2rem;cursor:pointer}
+</style>
 </head>
 <body>
-  <div id="game-wrap">
-    <canvas id="game"></canvas>
-    <div id="hud">
-      <span id="score-el"></span>
-      <span id="timer-el"></span>
-      <span id="lives-el"></span>
-    </div>
-    <div id="overlay" class="hidden">
-      <h1 id="overlay-title"></h1>
-      <p  id="overlay-msg"></p>
-      <button id="restart-btn">Play Again 🎮</button>
-    </div>
-  </div>
+<div id="hud">
+  <span id="h-lives"></span>
+  <span id="h-score"></span>
+  <span id="h-timer"></span>
+</div>
+<canvas id="game"></canvas>
+<div id="controls">
+  <div></div><button class="cb" id="bu">▲</button><div></div>
+  <button class="cb" id="bl">◄</button>
+  <button class="cb" id="bd">▼</button>
+  <button class="cb" id="br">►</button>
+</div>
+<div id="overlay" class="hidden">
+  <h1 id="o-emoji"></h1>
+  <h2 id="o-title"></h2>
+  <p  id="o-msg"></p>
+  <button onclick="restart()">Play Again! 🎮</button>
+</div>
+<script>
+const DATA   = ${gameData};
+const BG_SRC = ${bgSrc};
+const COLORS = ${JSON.stringify(ROLE_COLOR)};
 
-  <div id="dpad">
-    <div></div>
-    <button class="dpad-btn" id="btn-up">▲</button>
-    <div></div>
-    <button class="dpad-btn" id="btn-left">◀</button>
-    <div></div>
-    <button class="dpad-btn" id="btn-right">▶</button>
-    <div></div>
-    <button class="dpad-btn" id="btn-down">▼</button>
-    <div></div>
-  </div>
+const canvas = document.getElementById('game');
+const ctx    = canvas.getContext('2d');
+const LW = 800, LH = 500;
 
-  <script>
-${buildGameScript(specJson)}
-  </script>
-</body>
-</html>`
+function resize() {
+  const s = Math.min(window.innerWidth / LW, (window.innerHeight - 110) / LH);
+  canvas.style.width  = (LW * s) + 'px';
+  canvas.style.height = (LH * s) + 'px';
+  canvas.width  = LW;
+  canvas.height = LH;
+}
+resize();
+window.addEventListener('resize', resize);
+
+const bgImg = new Image();
+bgImg.src = BG_SRC;
+
+const keys = {};
+window.addEventListener('keydown', e => { keys[e.key] = true;  e.preventDefault(); });
+window.addEventListener('keyup',   e => { keys[e.key] = false; });
+
+function bindBtn(id, key) {
+  const b = document.getElementById(id);
+  if (!b) return;
+  const on  = e => { e.preventDefault(); keys[key] = true; };
+  const off = e => { e.preventDefault(); keys[key] = false; };
+  b.addEventListener('touchstart', on,  { passive: false });
+  b.addEventListener('touchend',   off, { passive: false });
+  b.addEventListener('mousedown',  on);
+  b.addEventListener('mouseup',    off);
+}
+bindBtn('bu','ArrowUp'); bindBtn('bd','ArrowDown');
+bindBtn('bl','ArrowLeft'); bindBtn('br','ArrowRight');
+
+let state;
+
+function buildState() {
+  const entities = DATA.elements.map(el => {
+    const mv = DATA.movements.find(m => m.elementId === el.id) || { type:'stationary', speed:3 };
+    return {
+      id: el.id, name: el.name, role: el.role,
+      x: el.x * LW,  y: el.y * LH,
+      w: Math.max(el.w * LW, 24), h: Math.max(el.h * LH, 24),
+      moveType: mv.type,
+      speed: mv.speed * 55,
+      vx: mv.type === 'auto-patrol' ? mv.speed * 55 : 0,
+      vy: 0,
+      alive: true, collected: false,
+    };
+  });
+  const wt = DATA.winCondition.type;
+  const timerStart =
+    wt === 'survive-timer'  ? (DATA.winCondition.duration ?? 30) :
+    DATA.rules.timeLimit    ? DATA.rules.timeLimit :
+    null;
+  return { entities, lives: DATA.rules.lives, score: 0, timer: timerStart, phase: 'playing', invincible: 0 };
 }
 
-function buildGameScript(specJson) {
-  return `(function () {
-  var SPEC = ${specJson};
+function restart() {
+  state = buildState();
+  document.getElementById('overlay').classList.add('hidden');
+  lastTs = null;
+}
+restart();
 
-  // Canvas + sizing
-  var canvas = document.getElementById('game');
-  var ctx    = canvas.getContext('2d');
+function overlaps(a, b) {
+  return a.x < b.x+b.w && a.x+a.w > b.x && a.y < b.y+b.h && a.y+a.h > b.y;
+}
+function player() { return state.entities.find(e => e.role === 'player'); }
 
-  var bgImg = new Image();
-  bgImg.onload  = function () { initCanvas(bgImg.naturalWidth, bgImg.naturalHeight); };
-  bgImg.onerror = function () { initCanvas(800, 500); };
-  if (SPEC.background) {
-    bgImg.src = SPEC.background;
+let lastTs = null;
+
+function update(ts) {
+  if (!lastTs) lastTs = ts;
+  const dt = Math.min((ts - lastTs) / 1000, 0.05);
+  lastTs = ts;
+  if (state.phase !== 'playing') return;
+  const pl = player();
+  if (pl && pl.moveType === 'arrow-keys') {
+    let vx = 0, vy = 0;
+    if (keys['ArrowLeft']  || keys['a']) vx = -pl.speed;
+    if (keys['ArrowRight'] || keys['d']) vx =  pl.speed;
+    if (keys['ArrowUp']    || keys['w']) vy = -pl.speed;
+    if (keys['ArrowDown']  || keys['s']) vy =  pl.speed;
+    pl.x = Math.max(0, Math.min(LW - pl.w, pl.x + vx * dt));
+    pl.y = Math.max(0, Math.min(LH - pl.h, pl.y + vy * dt));
+  }
+  state.entities.filter(e => e.role === 'enemy' && e.alive).forEach(en => {
+    if (en.moveType === 'auto-patrol') {
+      en.x += en.vx * dt;
+      if (en.x <= 0 || en.x + en.w >= LW) en.vx *= -1;
+      en.x = Math.max(0, Math.min(LW - en.w, en.x));
+    } else if (en.moveType === 'follows-player' && pl) {
+      const dx = (pl.x + pl.w/2) - (en.x + en.w/2);
+      const dy = (pl.y + pl.h/2) - (en.y + en.h/2);
+      const d  = Math.sqrt(dx*dx + dy*dy) || 1;
+      en.x += (dx/d) * en.speed * dt;
+      en.y += (dy/d) * en.speed * dt;
+    }
+  });
+  if (state.invincible > 0) state.invincible -= dt;
+  if (state.timer !== null) state.timer = Math.max(0, state.timer - dt);
+  if (pl) {
+    state.entities.forEach(en => {
+      if (!en.alive || en.role === 'player' || !overlaps(pl, en)) return;
+      if (en.role === 'collectible' && !en.collected) {
+        en.collected = true; en.alive = false;
+        if (DATA.rules.scoring) state.score += DATA.rules.pointsPerCollectible;
+      }
+      if (en.role === 'enemy' && state.invincible <= 0) {
+        if (DATA.winCondition.type === 'defeat-all-enemies') { en.alive = false; }
+        else { state.lives--; state.invincible = 2; if (state.lives <= 0) { state.phase='lost'; showOverlay('lost'); } }
+      }
+      if (en.role === 'obstacle') {
+        const ox = (pl.x + pl.w/2) - (en.x + en.w/2);
+        const oy = (pl.y + pl.h/2) - (en.y + en.h/2);
+        if (Math.abs(ox) > Math.abs(oy)) pl.x += ox > 0 ? 2 : -2;
+        else pl.y += oy > 0 ? 2 : -2;
+      }
+    });
+  }
+  checkWin();
+  updateHUD();
+}
+
+function checkWin() {
+  if (state.phase !== 'playing') return;
+  const pl = player();
+  const wt = DATA.winCondition.type;
+  const ents = state.entities;
+  if (wt === 'collect-all') {
+    const cols = ents.filter(e => e.role === 'collectible');
+    if (cols.length && cols.every(c => c.collected)) { state.phase='won'; showOverlay('won'); }
+  } else if (wt === 'defeat-all-enemies') {
+    const enems = ents.filter(e => e.role === 'enemy');
+    if (enems.length && enems.every(e => !e.alive)) { state.phase='won'; showOverlay('won'); }
+  } else if (wt === 'reach-goal' && pl) {
+    const goal = ents.find(e => e.id === DATA.winCondition.target);
+    if (goal && overlaps(pl, goal)) { state.phase='won'; showOverlay('won'); }
+  } else if (wt === 'survive-timer') {
+    if (state.timer !== null && state.timer <= 0) { state.phase='won'; showOverlay('won'); }
+  }
+  if (wt !== 'survive-timer' && state.timer !== null && state.timer <= 0 && state.phase === 'playing') {
+    state.phase = 'lost'; showOverlay('lost');
+  }
+}
+
+function updateHUD() {
+  document.getElementById('h-lives').textContent = '❤️'.repeat(Math.max(0, state.lives));
+  document.getElementById('h-score').textContent = DATA.rules.scoring ? '⭐ ' + state.score : '';
+  document.getElementById('h-timer').textContent = state.timer !== null ? '⏱️ ' + Math.ceil(state.timer) + 's' : '';
+}
+
+function showOverlay(result) {
+  document.getElementById('o-emoji').textContent = result === 'won' ? '🎉' : '😢';
+  document.getElementById('o-title').textContent = result === 'won' ? 'You Won!'   : 'Game Over';
+  document.getElementById('o-msg').textContent   = result === 'won'
+    ? (DATA.rules.scoring ? 'Score: ' + state.score : 'Amazing job!')
+    : 'Better luck next time!';
+  document.getElementById('overlay').classList.remove('hidden');
+}
+
+function draw() {
+  ctx.clearRect(0, 0, LW, LH);
+  if (bgImg.complete && bgImg.naturalWidth > 0) {
+    ctx.drawImage(bgImg, 0, 0, LW, LH);
   } else {
-    initCanvas(800, 500);
+    ctx.fillStyle = '#87ceeb';
+    ctx.fillRect(0, 0, LW, LH);
   }
-
-  function initCanvas(imgW, imgH) {
-    var maxW = Math.min(window.innerWidth  - 16, 840);
-    var maxH = Math.min(window.innerHeight - 20, 560);
-    var ratio = imgW / imgH;
-    var W = maxW, H = maxW / ratio;
-    if (H > maxH) { H = maxH; W = maxH * ratio; }
-    W = Math.floor(W); H = Math.floor(H);
-    canvas.width  = W;
-    canvas.height = H;
-    startGame(W, H);
-  }
-
-  function startGame(W, H) {
-    // Build movement lookup
-    var mvMap = {};
-    (SPEC.movements || []).forEach(function (m) { mvMap[m.elementId] = m; });
-
-    // Build entities
-    var entities = (SPEC.elements || []).map(function (el) {
-      var mv = mvMap[el.id] || { type: 'stationary', speed: 3 };
-      return {
-        id:         el.id,
-        name:       el.name,
-        role:       el.role,
-        subtype:    el.subtype || null,
-        x:          el.x * W,
-        y:          el.y * H,
-        w:          Math.max(el.w * W, 18),
-        h:          Math.max(el.h * H, 18),
-        startX:     el.x * W,
-        startY:     el.y * H,
-        vx: 0, vy: 0,
-        alive:      true,
-        patrolDir:  1,
-        mvType:     mv.type,
-        speed:      mv.speed || 3,
-      };
-    });
-
-    var player    = entities.find(function (e) { return e.role === 'player'; });
-    var winType   = (SPEC.winCondition  || {}).type;
-    var winTarget = (SPEC.winCondition  || {}).target;
-    var scoring   = (SPEC.rules || {}).scoring           || false;
-    var pointsEa  = (SPEC.rules || {}).pointsPerCollectible || 10;
-    var startLives= (SPEC.rules || {}).lives             || 3;
-    var timeLimit = (SPEC.rules || {}).timeLimit         || null;  // seconds or null
-
-    // Game state
-    var score = 0, lives = startLives;
-    var timeLeft    = timeLimit ? timeLimit * 1000 : null;  // ms
-    var gameOver    = false, won = false;
-    var invincibleMs= 0;
-    var onGround    = false;  // tracks whether player is standing on something
-
-    var GRAVITY   = 900;  // px/s²
-    var JUMP_SPD  = 320;  // px/s upward (lower = shorter jump)
-    var standingOn = null; // obstacle the player is currently riding
-
-    // Input
-    var keys = {};
-    window.addEventListener('keydown', function (e) {
-      keys[e.key] = true;
-      if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].indexOf(e.key) !== -1) {
-        e.preventDefault();
-      }
-    });
-    window.addEventListener('keyup', function (e) { keys[e.key] = false; });
-
-    function bindDpad(id, key) {
-      var btn = document.getElementById(id);
-      if (!btn) return;
-      btn.addEventListener('touchstart',  function (e) { keys[key] = true;  e.preventDefault(); }, { passive: false });
-      btn.addEventListener('touchend',    function (e) { keys[key] = false; e.preventDefault(); }, { passive: false });
-      btn.addEventListener('touchcancel', function (e) { keys[key] = false; e.preventDefault(); }, { passive: false });
-      btn.addEventListener('mousedown',   function ()  { keys[key] = true;  });
-      btn.addEventListener('mouseup',     function ()  { keys[key] = false; });
-    }
-    bindDpad('btn-up',    'ArrowUp');
-    bindDpad('btn-down',  'ArrowDown');
-    bindDpad('btn-left',  'ArrowLeft');
-    bindDpad('btn-right', 'ArrowRight');
-
-    // HUD elements
-    var scoreEl   = document.getElementById('score-el');
-    var livesEl   = document.getElementById('lives-el');
-    var timerEl   = document.getElementById('timer-el');
-    var overlay   = document.getElementById('overlay');
-    var oTitle    = document.getElementById('overlay-title');
-    var oMsg      = document.getElementById('overlay-msg');
-    var restartBtn= document.getElementById('restart-btn');
-
-    function updateHUD() {
-      if (scoring) scoreEl.textContent = '⭐ ' + score;
-      livesEl.textContent = '❤️ '.repeat(Math.max(0, lives));
-      if (timeLeft !== null) {
-        var secs = Math.ceil(timeLeft / 1000);
-        timerEl.textContent = '⏱ ' + secs + 's';
-      }
-    }
-
-    function showOverlay(title, msg) {
-      oTitle.textContent = title;
-      oMsg.textContent   = msg;
-      overlay.classList.remove('hidden');
-    }
-
-    restartBtn.addEventListener('click', function () {
-      overlay.classList.add('hidden');
-      resetGame();
-    });
-
-    function resetGame() {
-      score = 0; lives = startLives;
-      timeLeft     = timeLimit ? timeLimit * 1000 : null;
-      gameOver     = false; won = false;
-      invincibleMs = 0;
-      onGround     = false;
-      standingOn   = null;
-      entities.forEach(function (e) {
-        e.x = e.startX; e.y = e.startY;
-        e.vx = 0; e.vy = 0;
-        e.alive = true; e.patrolDir = 1;
-      });
-    }
-
-    // Collision helpers
-    function overlaps(a, b) {
-      return a.x < b.x + b.w && a.x + a.w > b.x &&
-             a.y < b.y + b.h && a.y + a.h > b.y;
-    }
-
-    function resolveOverlap(mover, blocker) {
-      var ox = Math.min(mover.x + mover.w, blocker.x + blocker.w) - Math.max(mover.x, blocker.x);
-      var oy = Math.min(mover.y + mover.h, blocker.y + blocker.h) - Math.max(mover.y, blocker.y);
-      if (ox < oy) {
-        mover.x += (mover.x < blocker.x) ? -ox : ox;
-      } else {
-        mover.y += (mover.y < blocker.y) ? -oy : oy;
-      }
-    }
-
-    function checkWin() {
-      if (!player || !player.alive) return false;
-      if (winType === 'collect-all') {
-        return entities.filter(function (e) { return e.role === 'collectible'; })
-                       .every(function (e) { return !e.alive; });
-      }
-      if (winType === 'reach-goal') {
-        var goal = entities.find(function (e) { return e.id === winTarget; }) ||
-                   entities.find(function (e) { return e.role === 'collectible'; });
-        return !!goal && overlaps(player, goal);
-      }
-      if (winType === 'defeat-all-enemies') {
-        return entities.filter(function (e) { return e.role === 'enemy'; })
-                       .every(function (e) { return !e.alive; });
-      }
-      if (winType === 'survive-timer') {
-        return timeLeft !== null && timeLeft <= 0 && lives > 0;
-      }
-      return false;
-    }
-
-    // Respawn player at their start position
-    function respawnPlayer() {
-      if (!player) return;
-      player.x  = player.startX;
-      player.y  = player.startY;
-      player.vx = 0;
-      player.vy = 0;
-      standingOn = null;
-    }
-
-    // Update
-    function update(dt) {
-      var ms = dt * 1000;
-      if (invincibleMs > 0) invincibleMs -= ms;
-      if (timeLeft    !== null) timeLeft -= ms;
-
-      // ── Non-player entity movement ─────────────────────
-      // frameVx/frameVy record the displacement each entity moved this frame
-      // so the player can ride moving obstacles.
-      entities.forEach(function (e) {
-        if (!e.alive || e === player) return;
-        e.vx = 0; e.vy = 0;
-
-        if (e.mvType === 'auto-patrol') {
-          var spd = e.speed * 60 * dt;
-          e.vx = spd * e.patrolDir;
-          if (e.x <= 0)        { e.patrolDir =  1; e.x = 0; }
-          if (e.x + e.w >= W)  { e.patrolDir = -1; e.x = W - e.w; }
-
-        } else if (e.mvType === 'auto-patrol-v') {
-          var spd = e.speed * 60 * dt;
-          e.vy = spd * e.patrolDir;
-          if (e.y <= 0)        { e.patrolDir =  1; e.y = 0; }
-          if (e.y + e.h >= H)  { e.patrolDir = -1; e.y = H - e.h; }
-
-        } else if (e.mvType === 'follows-player' && player && player.alive) {
-          var spd  = e.speed * 60 * dt;
-          var dx   = (player.x + player.w / 2) - (e.x + e.w / 2);
-          var dy   = (player.y + player.h / 2) - (e.y + e.h / 2);
-          var dist = Math.sqrt(dx * dx + dy * dy) || 1;
-          e.vx = (dx / dist) * spd;
-          e.vy = (dy / dist) * spd;
-        }
-
-        // Store frame displacement before applying (for player riding)
-        e.frameVx = e.vx;
-        e.frameVy = e.vy;
-
-        e.x += e.vx;
-        e.y += e.vy;
-        e.x = Math.max(0, Math.min(W - e.w, e.x));
-        e.y = Math.max(0, Math.min(H - e.h, e.y));
-      });
-
-      // ── Player platformer physics ──────────────────────
-      if (player && player.alive && player.mvType === 'arrow-keys') {
-        var hspd = player.speed * 60; // px/s
-
-        // Carry player with the platform they're standing on
-        if (standingOn && standingOn.alive) {
-          player.x += standingOn.frameVx || 0;
-          player.y += standingOn.frameVy || 0;
-          player.x  = Math.max(0, Math.min(W - player.w, player.x));
-        }
-
-        // Horizontal from keys
-        player.vx = 0;
-        if (keys['ArrowLeft']  || keys['a'] || keys['A']) player.vx = -hspd;
-        if (keys['ArrowRight'] || keys['d'] || keys['D']) player.vx =  hspd;
-
-        // Gravity
-        player.vy += GRAVITY * dt;
-
-        // --- Move X → resolve X obstacle collisions ---
-        player.x += player.vx * dt;
-        player.x  = Math.max(0, Math.min(W - player.w, player.x));
-
-        entities.forEach(function (obs) {
-          if (!obs.alive || obs.role !== 'obstacle') return;
-          if (!overlaps(player, obs)) return;
-          if (obs.subtype === 'spikes') {
-            if (invincibleMs <= 0) { lives--; invincibleMs = 2000; respawnPlayer(); }
-          } else {
-            var pcx = player.x + player.w / 2;
-            var ocx = obs.x   + obs.w   / 2;
-            player.x = pcx < ocx ? obs.x - player.w : obs.x + obs.w;
-            player.vx = 0;
-          }
-        });
-
-        // --- Move Y → resolve Y obstacle collisions + ground ---
-        player.y += player.vy * dt;
-        standingOn = null;
-        onGround   = false;
-
-        // Canvas ground
-        if (player.y + player.h >= H) {
-          player.y  = H - player.h;
-          player.vy = 0;
-          onGround  = true;
-        }
-
-        // Obstacle surfaces
-        entities.forEach(function (obs) {
-          if (!obs.alive || obs.role !== 'obstacle') return;
-          if (!overlaps(player, obs)) return;
-          if (obs.subtype === 'spikes') {
-            // Touched spikes from above or below — always hurts
-            if (invincibleMs <= 0) { lives--; invincibleMs = 2000; respawnPlayer(); }
-          } else if (player.vy >= 0) {
-            // Falling — land on top
-            player.y   = obs.y - player.h;
-            player.vy  = 0;
-            onGround   = true;
-            standingOn = obs;
-          } else {
-            // Rising — hit underside
-            player.y  = obs.y + obs.h;
-            player.vy = 0;
-          }
-        });
-
-        // Jump (only when grounded)
-        if (onGround && (keys['ArrowUp'] || keys[' '] || keys['w'] || keys['W'])) {
-          player.vy  = -JUMP_SPD;
-          onGround   = false;
-          standingOn = null;
-        }
-      }
-
-      // ── Collision consequences ─────────────────────────
-      if (player && player.alive) {
-        entities.forEach(function (e) {
-          if (!e.alive || e === player) return;
-          if (!overlaps(player, e)) return;
-
-          if (e.role === 'collectible') {
-            e.alive = false;
-            if (scoring) score += pointsEa;
-
-          } else if (e.role === 'enemy') {
-            if (winType === 'defeat-all-enemies') {
-              e.alive = false;
-              if (scoring) score += pointsEa;
-            } else if (invincibleMs <= 0) {
-              lives--;
-              invincibleMs = 2000;
-              respawnPlayer();
-            }
-
-          }
-        });
-      }
-
-      // Check win / loss
-      if (checkWin()) {
-        won = true;
-        showOverlay('You Win! 🎉', scoring ? 'Score: ' + score : 'Amazing job!');
-      } else if (lives <= 0) {
-        gameOver = true;
-        showOverlay('Game Over 😢', 'Better luck next time!');
-      } else if (timeLeft !== null && timeLeft <= 0 && winType !== 'survive-timer') {
-        gameOver = true;
-        showOverlay("Time's Up! ⏰", 'Try again!');
-      }
-    }
-
-    // ── Drawing functions ──────────────────────────────
-
-    function drawStickman(x, y, w, h, color) {
-      ctx.save();
-      var lw = Math.max(2, Math.min(4, w * 0.09));
-      ctx.strokeStyle = color;
-      ctx.fillStyle   = color;
-      ctx.lineWidth   = lw;
-      ctx.lineCap     = 'round';
-      ctx.lineJoin    = 'round';
-
-      var cx     = x + w / 2;
-      var headR  = Math.max(4, Math.min(w * 0.22, h * 0.2));
-      var headCy = y + headR + lw;
-
-      // Head
-      ctx.beginPath();
-      ctx.arc(cx, headCy, headR, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Body
-      var neckY  = headCy + headR;
-      var waistY = y + h * 0.68;
-      ctx.beginPath();
-      ctx.moveTo(cx, neckY);
-      ctx.lineTo(cx, waistY);
-      ctx.stroke();
-
-      // Arms
-      var armY = y + h * 0.40;
-      ctx.beginPath();
-      ctx.moveTo(x + w * 0.1, armY + h * 0.09);
-      ctx.lineTo(cx, armY);
-      ctx.lineTo(x + w * 0.9, armY + h * 0.09);
-      ctx.stroke();
-
-      // Legs
-      ctx.beginPath();
-      ctx.moveTo(cx, waistY);
-      ctx.lineTo(x + w * 0.18, y + h - lw);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(cx, waistY);
-      ctx.lineTo(x + w * 0.82, y + h - lw);
-      ctx.stroke();
-
-      ctx.restore();
-    }
-
-    function drawCoin(x, y, w, h) {
-      var cx = x + w / 2;
-      var cy = y + h / 2;
-      var r  = Math.min(w, h) / 2 - 1;
-      ctx.save();
-
-      // Outer ring
-      ctx.beginPath();
-      ctx.arc(cx, cy, r, 0, Math.PI * 2);
-      ctx.fillStyle = '#FFD700';
-      ctx.fill();
-      ctx.strokeStyle = '#B8860B';
-      ctx.lineWidth = Math.max(1.5, r * 0.12);
-      ctx.stroke();
-
-      // Inner highlight
-      ctx.beginPath();
-      ctx.arc(cx, cy, r * 0.62, 0, Math.PI * 2);
-      ctx.fillStyle = '#FFF9C4';
-      ctx.fill();
-
-      // Star symbol
-      ctx.fillStyle = '#F9A825';
-      ctx.font = 'bold ' + Math.max(8, Math.floor(r * 1.0)) + 'px sans-serif';
-      ctx.textAlign    = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('★', cx, cy + 1);
-
-      ctx.restore();
-    }
-
-    function drawBrickWall(x, y, w, h) {
-      ctx.save();
-
-      // Dark mortar background
-      ctx.fillStyle = '#5D3A1A';
-      ctx.fillRect(x, y, w, h);
-
-      var bH = Math.max(8, Math.round(h / Math.max(2, Math.round(h / 14))));
-      var bW = Math.max(16, Math.round(w / Math.max(1, Math.round(w / 26))));
-      var rows = Math.ceil(h / bH);
-
-      for (var row = 0; row <= rows; row++) {
-        var offset = (row % 2) * (bW / 2);
-        var by = y + row * bH;
-        var cols = Math.ceil((w + bW) / bW) + 1;
-        for (var col = -1; col <= cols; col++) {
-          var bx = x + col * bW - offset;
-          var rx = Math.max(bx + 1, x);
-          var ry = Math.max(by + 1, y);
-          var rw = Math.min(bx + bW - 2, x + w) - rx;
-          var rh = Math.min(by + bH - 2, y + h) - ry;
-          if (rw > 2 && rh > 2) {
-            ctx.fillStyle = '#C0623A';
-            ctx.fillRect(rx, ry, rw, rh);
-            // Highlight top edge
-            ctx.fillStyle = '#D4795A';
-            ctx.fillRect(rx, ry, rw, Math.max(1, rh * 0.3));
-          }
-        }
-      }
-
-      ctx.restore();
-    }
-
-    function drawSpikes(x, y, w, h) {
-      ctx.save();
-
-      var baseH = Math.max(4, h * 0.28);
-      var baseY = y + h - baseH;
-
-      // Base plate
-      ctx.fillStyle = '#455A64';
-      ctx.fillRect(x, baseY, w, baseH);
-
-      // Spikes
-      var numSpikes = Math.max(2, Math.floor(w / 13));
-      var sW = w / numSpikes;
-
-      for (var i = 0; i < numSpikes; i++) {
-        var sx  = x + i * sW;
-        var tipX = sx + sW / 2;
-
-        ctx.beginPath();
-        ctx.moveTo(sx + 1, baseY + baseH);
-        ctx.lineTo(tipX, y + 1);
-        ctx.lineTo(sx + sW - 1, baseY + baseH);
-        ctx.closePath();
-        ctx.fillStyle = '#78909C';
-        ctx.fill();
-
-        // Shine on left face
-        ctx.beginPath();
-        ctx.moveTo(sx + sW * 0.28, baseY + baseH * 0.7);
-        ctx.lineTo(tipX - 1, y + 3);
-        ctx.strokeStyle = '#CFD8DC';
-        ctx.lineWidth = 1;
-        ctx.stroke();
-      }
-
-      ctx.restore();
-    }
-
-    function drawEntity(e) {
-      ctx.save();
-      if (e === player && invincibleMs > 0 && Math.floor(invincibleMs / 150) % 2 === 1) {
-        ctx.restore();
-        return;
-      }
-
-      if (e.role === 'player') {
-        drawStickman(e.x, e.y, e.w, e.h, '#43A047');
-      } else if (e.role === 'enemy') {
-        drawStickman(e.x, e.y, e.w, e.h, '#E53935');
-      } else if (e.role === 'collectible') {
-        drawCoin(e.x, e.y, e.w, e.h);
-      } else if (e.role === 'obstacle') {
-        if (e.subtype === 'spikes') {
-          drawSpikes(e.x, e.y, e.w, e.h);
-        } else {
-          drawBrickWall(e.x, e.y, e.w, e.h);
-        }
-      }
-
-      ctx.restore();
-    }
-
-    // Render
-    function render() {
-      ctx.clearRect(0, 0, W, H);
-
-      // Background
-      if (bgImg.complete && bgImg.naturalWidth > 0) {
-        ctx.drawImage(bgImg, 0, 0, W, H);
-      } else {
-        ctx.fillStyle = '#87ceeb';
-        ctx.fillRect(0, 0, W, H);
-      }
-
-      // Entities
-      entities.forEach(function (e) {
-        if (!e.alive) return;
-        drawEntity(e);
-      });
-
-      updateHUD();
-    }
-
-    // Loop
-    var lastTime = 0;
-    function loop(ts) {
-      var dt = Math.min((ts - lastTime) / 1000, 0.05);
-      lastTime = ts;
-      if (!won && !gameOver) update(dt);
-      render();
-      requestAnimationFrame(loop);
-    }
-    requestAnimationFrame(function (ts) { lastTime = ts; requestAnimationFrame(loop); });
-  }
-})();`
+  state.entities.forEach(en => {
+    if (!en.alive) return;
+    if (en.role === 'player' && state.invincible > 0 && Math.floor(state.invincible * 10) % 2 === 0) return;
+    const c = COLORS[en.role] || '#888';
+    ctx.fillStyle   = c + 'bb';
+    ctx.strokeStyle = c;
+    ctx.lineWidth   = 3;
+    ctx.fillRect  (en.x, en.y, en.w, en.h);
+    ctx.strokeRect(en.x, en.y, en.w, en.h);
+    ctx.fillStyle   = '#fff';
+    ctx.font        = 'bold 13px sans-serif';
+    ctx.textAlign   = 'center';
+    ctx.textBaseline= 'middle';
+    ctx.fillText(en.name, en.x + en.w/2, en.y + en.h/2);
+  });
+  ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+}
+
+function loop(ts) { update(ts); draw(); requestAnimationFrame(loop); }
+requestAnimationFrame(loop);
+<\/script>
+</body>
+</html>`
 }
