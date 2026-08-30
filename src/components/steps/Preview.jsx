@@ -1,53 +1,58 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useGame } from '../../context/GameContext'
 import { generateGame } from '../../modules/gameGenerator'
-import { downloadGame } from '../../modules/previewEngine'
+import { downloadHtml } from '../../modules/previewEngine'
+import { isGameSpecComplete } from '../../modules/gameDefinitionBuilder'
 
 export default function Preview() {
   const { gameSpec } = useGame()
-  const iframeRef   = useRef(null)
-  const [html, setHtml] = useState('')
+  const [htmlOutput, setHtmlOutput] = useState('')
+  const [error, setError] = useState('')
 
   useEffect(() => {
-    const generated = generateGame(gameSpec)
-    setHtml(generated)
+    if (!isGameSpecComplete(gameSpec)) return
+    try {
+      setHtmlOutput(generateGame(gameSpec))
+      setError('')
+    } catch (err) {
+      setError('Could not generate game: ' + err.message)
+    }
   }, [gameSpec])
 
-  useEffect(() => {
-    const iframe = iframeRef.current
-    if (!iframe || !html) return
-    iframe.srcdoc = html
-  }, [html])
+  if (!isGameSpecComplete(gameSpec)) {
+    return (
+      <div className="step-content">
+        <h2>Step 6: Preview Your Game</h2>
+        <p className="error-msg">Please complete all previous steps first.</p>
+      </div>
+    )
+  }
 
   return (
     <div className="step-content">
-      <h2>🎮 Play Your Game!</h2>
-      <p>
-        Try it out below — use the <strong>arrow keys</strong> to move.
-        On mobile, use the on-screen buttons inside the game.
-      </p>
+      <h2>Your Game is Ready! 🎉</h2>
+      <p>Try it below — use arrow keys or the on-screen buttons. When you're happy, download it!</p>
 
-      <div className="preview-wrap">
-        <iframe
-          ref={iframeRef}
-          className="game-preview"
-          title="Game Preview"
-          sandbox="allow-scripts"
-        />
-      </div>
+      {error && <p className="error-msg">{error}</p>}
 
-      <div className="preview-actions">
-        <button
-          className="btn btn-primary"
-          onClick={() => downloadGame(html)}
-          disabled={!html}
-        >
-          ⬇️ Download Game
-        </button>
-        <p className="preview-tip">
-          Save the file and open it in any browser to play — no internet needed!
-        </p>
-      </div>
+      {htmlOutput && (
+        <>
+          <div className="preview-wrap">
+            <iframe
+              className="game-iframe"
+              title="Game Preview"
+              srcDoc={htmlOutput}
+              sandbox="allow-scripts"
+            />
+          </div>
+          <button
+            className="btn btn-primary preview-download-btn"
+            onClick={() => downloadHtml(htmlOutput)}
+          >
+            ⬇️ Download My Game!
+          </button>
+        </>
+      )}
     </div>
   )
 }

@@ -1,7 +1,4 @@
-/**
- * Triggers a browser download of the generated game HTML as a .html file.
- */
-export function downloadGame(htmlString, filename = 'my-game.html') {
+export function downloadHtml(htmlString, filename = 'my-story2play-game.html') {
   const blob = new Blob([htmlString], { type: 'text/html' })
   const url  = URL.createObjectURL(blob)
   const a    = document.createElement('a')
